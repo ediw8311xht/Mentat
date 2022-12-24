@@ -1,4 +1,3 @@
-
 ABOUT:
     NAME: GMAN
     AUTHOR: Maximilian Ballard
@@ -23,5 +22,3 @@ Dependencies:
 
 Optional Dependencies:
     txt2man         https://github.com/mvertes/txt2man
-
-    
