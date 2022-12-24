@@ -19,11 +19,13 @@ URLG="${ULIST[ 0 ]}"
 PAGES=( {1..9} )
 RDIR="$HOME/.config/mentat"
 OUTDIR="${RDIR}/mentatpages"
+RECSDIR="${RDIR}/Recs/"
 #--------------INITILIZE------------------------------------#
-if ! [[ -d "${RDIR}"    ]] ; then mkdir "${RDIR}"   ; fi
-if ! [[ -d "${OUTDIR}"  ]] ; then mkdir "${OUTDIR}" ; fi
+if ! [[ -d "${RDIR}"    ]] ; then mkdir "${RDIR}"    ; fi
+if ! [[ -d "${OUTDIR}"  ]] ; then mkdir "${OUTDIR}"  ; fi
+if ! [[ -d "${RECSDIR}" ]] ; then mkdir "${RECSDIR}" ; fi
 if   command -v "lynx"  ; then 
-    function mlink_view()   { lynx  -cmd_script="${RDIR}/Recs/cmd_script_lynx.txt" "${1}" ; }
+    function mlink_view()   { lynx  -cmd_script="${RECSDIR}/cmd_script_lynx.txt" "${1}" ; }
     function mlink_dump()   { lynx  -dump -nonumbers "${1}" ; }
 elif command -v "links" ; then 
     function mlink_dump()   { links -dump -html-numbered-links 0 -no-g  "${1}" ; }
@@ -31,8 +33,14 @@ elif command -v "links" ; then
 elif command -v "curl"  ; then                          
     function mlink_view()   { curl  --use-ascii "${1}" ; }
     function mlink_dump()   { curl  "${1}" ; }
-else return '1'; fi
-
+else return '1'
+fi
+function mlink_nvim() {
+    com_inner="lynx -cmd_script='${RECSDIR}/cmd_script_lynx.txt' '${1}'"
+    com_full="$(printf 'vnew Web | call termopen(" %s ") | only' "${com_inner}")"
+    echo "${com_full}"
+    nvim -c "${com_full}"
+}
 #--------------GET_FUNCTIONS--------------------------#
 function make_subname() {
     grep -Pio '^([a-zA-Z]*://)?([ \t]*www.)?\K[^./]*' <<< "${1}"
@@ -68,12 +76,6 @@ function get_man() {
     return 0
 }
 #--------------SMALL-ONE-JOB------------#
-function nvspec() {
-    com_inner="lynx -cmd_script='${RDIR}/Recs/cmd_script_lynx.txt' '${1}'"
-    com_full="$(printf 'vnew Web | call termopen(" %s ") | only' "${com_inner}")"
-    echo "${com_full}"
-    nvim -c "${com_full}"
-}
 function get_all() {
     while [[ "${i:=0}" -lt ${#URL[@]} ]] ; do
         get_man "${ULIST[ i++ ]}"
@@ -89,7 +91,7 @@ function handle_args() {
     ;;     --view) MODE='view'
     ;;     --dump) MODE='dump'
     ;;      --get) MODE='get' 
-    ;;     --nvim) MODE='nvim_view' ; function mlink_view() { nvspec "${@}"; }
+    ;;     --nvim) MODE='nvim'
     ;; -*) echo "OPTION ${1} NOT FOUND"     ; return "1"
     ;; "") echo "COMMAND NAME NOT PROVIDED" ; return "1"
     ;;  *) CNAME="${*}"                     ; return "$?"
@@ -107,13 +109,12 @@ function main() {
         ;;  all)    get_all
         ;; view)    mlink_view "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
         ;; dump)    mlink_dump "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
+        ;; nvim)    mlink_nvim "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
         ;;          *)  echo "Error, mode is undefined"; return 1
         esac
     fi
 
 } ; main "${@}"
-
-
 ####------------------------END-SUBSHELL-####
 ) ####------------------------END-SUBSHELL-####
 ####------------------------END-SUBSHELL-####
