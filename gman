@@ -1,0 +1,109 @@
+#!/bin/bash
+
+
+####------------------------BEGIN-SUBSHELL-####
+( ####------------------------BEGIN-SUBSHELL-####
+####------------------------BEGIN-SUBSHELL-####
+
+#--------------SETTINGS/VARS------------#
+NOCACHE='0'
+MODE='get'
+ULIST=( 
+    'www.gsp.com/cgi-bin/man.cgi?topic=%s&section=%s' 
+    'man.cx/%s(%s)' 
+    'www.freebsd.org/cgi/man.cgi?query=%s&sektion=%s&format=ascii'
+    'sarata.com/manpages/%s.%s.html' 
+)
+VW_PNUM='1'
+VW_URL="${ULIST[ 0 ]}"
+PAGES=( {1..9} )
+RDIR="$HOME/.config/gman"
+OUTDIR="${RDIR}/gmanpages"
+#--------------INITILIZE------------------------------------#
+if ! [[ -d "${RDIR}"    ]] ; then mkdir "${BASE_DIR}"   ; fi
+if ! [[ -d "${OUTDIR}"  ]] ; then mkdir "${OUTDIR}"     ; fi
+
+if   command -v "lynx"  ; then 
+    function mlink_view()   { lynx  -cmd_script="${RDIR}/Recs/cmd_script_lynx.txt" "${1}" ; }
+    function mlink_dump()   { lynx  -dump -nonumbers "${1}" ; }
+elif command -v "links" ; then 
+    function mlink_dump()   { links -dump -html-numbered-links 0 -no-g  "${1}" ; }
+    function mlink_view()   { links "${1}" ; }
+elif command -v "curl"  ; then                          
+    function mlink_view()   { curl  --use-ascii "${1}" ; }
+    function mlink_dump()   { curl  "${1}" ; }
+else return '1'; fi
+#--------------GET_FUNCTIONS--------------------------#
+function make_subname() {
+    grep -Pio '^([a-zA-Z]*://)?([ \t]*www.)?\K[^./]*' <<< "${1}"
+}
+function get_url() {
+    tmpfile="$(mktemp)" ; echo "${tmpfile}"
+    mlink_dump "${1}" > "${tmpfile}" 
+
+    if   str_beg="$(grep -Pn --max-count=1 '^NAME[ \t]*$' "${tmpfile}" | grep -Po '^[0-9]+(?=[^0-9])')"
+    then str_end="$(grep -Pn '^[A-Z]+[ \t]*$' "${tmpfile}" | tail -1 | grep -Po '^[0-9]+(?=[^0-9])')"
+         sed -i -n "$((str_beg-1)),$((str_end+5))p" "${tmpfile}"
+    fi
+    return "$?"
+}
+function find_pages() {
+    for i in "${PAGES[@]}" ; do
+        mdurl="$(printf "https://${1}" "${2}" "${i}")"
+        if ztop="$(get_url "${mdurl}")" ; then 
+            if command -z "txt2man"
+            then txt2man "${ztop}" > "${OUTDIR}/${3}.${i}"
+            else     cat "${ztop}" > "${OUTDIR}/${3}.${i}"
+        fi ; fi
+        if [[ -f "${ztop}" ]] ; then rm "${ztop}"; fi
+    done
+}
+function get_man() {
+    cmg_fn="$(make_subname "${VW_URL}").${PAGE}"
+    if [[ "${NOCACHE}" -eq "1" ]]  || ! ls -1 "${OUTDIR}/${cmg_fn}."* 2>/dev/null
+    then
+        find_pages "${VW_URL}" "${PAGE}" "${cmg_fn}"
+    fi
+
+    return 0
+}
+function handle_args() {
+    case "${1,,}" in 
+            --url)  VW_URL="${2}" ;shift 1 ;;
+      --view-pnum) VW_PNUM="${2}" ;shift 1 ;;
+        --nocache) NOCACHE='1'    ;; 
+            --all)    MODE='all'  ;;
+           --view)    MODE='view' ;;
+           --dump)    MODE='dump' ;;
+            --get)    MODE='get'  ;;
+            --nvim) function mlink_view() { 
+                        my_nvimc="$( printf 'vnew Web | call termopen("lynx -cmd_script=%s %s") | only' "'${RDIR}/Recs/cmd_script_lynx.txt'" "'${1}'" )" 
+                        nvim -c "${my_nvimc}"
+                    } ;;
+         -*) ;; *)    PAGE="${*}" ;return '0' 
+    esac
+    shift 1; handle_args "${@}"
+}
+
+#--------------MAIN---------------------#
+function main() {
+
+    handle_args "${@}"
+
+    case "${MODE,,}" in 
+        get)    get_man "${VW_URL}"
+    ;;  all)    while [[ "${i:=0}" -lt ${#URL[@]} ]] ; do
+                    get_man "${ULIST[ i++ ]}"
+                done
+    ;; view)    mlink_view "$(printf "${VW_URL}" "${PAGE}" "${VW_PNUM}")"
+    ;; dump)    mlink_dump "$(printf "${VW_URL}" "${PAGE}" "${VW_PNUM}")"
+    ;;          *)  echo "Error, mode is undefined"; return 1
+    esac
+
+} ; main "${@}"
+
+
+####------------------------END-SUBSHELL-####
+) ####------------------------END-SUBSHELL-####
+####------------------------END-SUBSHELL-####
+
