@@ -7,22 +7,21 @@
 
 #--------------SETTINGS/VARS------------#
 NOCACHE='0'
-MODE='get'
+MODE='view'
 ULIST=( 
     'www.gsp.com/cgi-bin/man.cgi?topic=%s&section=%s' 
     'man.cx/%s(%s)' 
     'www.freebsd.org/cgi/man.cgi?query=%s&sektion=%s&format=ascii'
     'sarata.com/manpages/%s.%s.html' 
 )
-VW_PNUM='1'
-VW_URL="${ULIST[ 0 ]}"
+VIEW_PG='1'
+URLG="${ULIST[ 0 ]}"
 PAGES=( {1..9} )
-RDIR="$HOME/.config/gman"
-OUTDIR="${RDIR}/gmanpages"
+RDIR="$HOME/.config/mentat"
+OUTDIR="${RDIR}/mentatpages"
 #--------------INITILIZE------------------------------------#
-if ! [[ -d "${RDIR}"    ]] ; then mkdir "${BASE_DIR}"   ; fi
-if ! [[ -d "${OUTDIR}"  ]] ; then mkdir "${OUTDIR}"     ; fi
-
+if ! [[ -d "${RDIR}"    ]] ; then mkdir "${RDIR}"   ; fi
+if ! [[ -d "${OUTDIR}"  ]] ; then mkdir "${OUTDIR}" ; fi
 if   command -v "lynx"  ; then 
     function mlink_view()   { lynx  -cmd_script="${RDIR}/Recs/cmd_script_lynx.txt" "${1}" ; }
     function mlink_dump()   { lynx  -dump -nonumbers "${1}" ; }
@@ -33,6 +32,7 @@ elif command -v "curl"  ; then
     function mlink_view()   { curl  --use-ascii "${1}" ; }
     function mlink_dump()   { curl  "${1}" ; }
 else return '1'; fi
+
 #--------------GET_FUNCTIONS--------------------------#
 function make_subname() {
     grep -Pio '^([a-zA-Z]*://)?([ \t]*www.)?\K[^./]*' <<< "${1}"
@@ -59,46 +59,57 @@ function find_pages() {
     done
 }
 function get_man() {
-    cmg_fn="$(make_subname "${VW_URL}").${PAGE}"
+    cmg_fn="$(make_subname "${URLG}").${CNAME}"
     if [[ "${NOCACHE}" -eq "1" ]]  || ! ls -1 "${OUTDIR}/${cmg_fn}."* 2>/dev/null
     then
-        find_pages "${VW_URL}" "${PAGE}" "${cmg_fn}"
+        find_pages "${URLG}" "${CNAME}" "${cmg_fn}"
     fi
 
     return 0
 }
+#--------------SMALL-ONE-JOB------------#
+function nvspec() {
+    com_inner="lynx -cmd_script='${RDIR}/Recs/cmd_script_lynx.txt' '${1}'"
+    com_full="$(printf 'vnew Web | call termopen(" %s ") | only' "${com_inner}")"
+    echo "${com_full}"
+    nvim -c "${com_full}"
+}
+function get_all() {
+    while [[ "${i:=0}" -lt ${#URL[@]} ]] ; do
+        get_man "${ULIST[ i++ ]}"
+    done
+}
+#--------------HANDLE_ARGS--------------#
 function handle_args() {
     case "${1,,}" in 
-            --url)  VW_URL="${2}" ;shift 1 ;;
-      --view-pnum) VW_PNUM="${2}" ;shift 1 ;;
-        --nocache) NOCACHE='1'    ;; 
-            --all)    MODE='all'  ;;
-           --view)    MODE='view' ;;
-           --dump)    MODE='dump' ;;
-            --get)    MODE='get'  ;;
-            --nvim) function mlink_view() { 
-                        my_nvimc="$( printf 'vnew Web | call termopen("lynx -cmd_script=%s %s") | only' "'${RDIR}/Recs/cmd_script_lynx.txt'" "'${1}'" )" 
-                        nvim -c "${my_nvimc}"
-                    } ;;
-         -*) ;; *)    PAGE="${*}" ;return '0' 
+            --url) URLG="${2}"    ; shift 1
+    ;; --view-num) VIEW_PG="${2}" ; shift 1
+    ;;  --nocache) NOCACHE='1'   
+    ;;      --all) MODE='all' 
+    ;;     --view) MODE='view'
+    ;;     --dump) MODE='dump'
+    ;;      --get) MODE='get' 
+    ;;     --nvim) MODE='nvim_view' ; function mlink_view() { nvspec "${@}"; }
+    ;; -*) echo "OPTION ${1} NOT FOUND"     ; return "1"
+    ;; "") echo "COMMAND NAME NOT PROVIDED" ; return "1"
+    ;;  *) CNAME="${*}"                     ; return "$?"
     esac
     shift 1; handle_args "${@}"
 }
-
 #--------------MAIN---------------------#
 function main() {
 
-    handle_args "${@}"
-
-    case "${MODE,,}" in 
-        get)    get_man "${VW_URL}"
-    ;;  all)    while [[ "${i:=0}" -lt ${#URL[@]} ]] ; do
-                    get_man "${ULIST[ i++ ]}"
-                done
-    ;; view)    mlink_view "$(printf "${VW_URL}" "${PAGE}" "${VW_PNUM}")"
-    ;; dump)    mlink_dump "$(printf "${VW_URL}" "${PAGE}" "${VW_PNUM}")"
-    ;;          *)  echo "Error, mode is undefined"; return 1
-    esac
+    if ! handle_args "${@}" ; then
+        return "1"
+    else
+        case "${MODE,,}" in 
+            get)    get_man "${URLG}"
+        ;;  all)    get_all
+        ;; view)    mlink_view "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
+        ;; dump)    mlink_dump "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
+        ;;          *)  echo "Error, mode is undefined"; return 1
+        esac
+    fi
 
 } ; main "${@}"
 
