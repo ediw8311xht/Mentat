@@ -1,81 +1,75 @@
 #!/bin/bash
 
-
-####------------------------BEGIN-SUBSHELL-####
 ( ####------------------------BEGIN-SUBSHELL-####
-####------------------------BEGIN-SUBSHELL-####
-
-#--------------SETTINGS/VARS------------#
-NOCACHE='0'
-MODE='view'
+#--------------SETTINGS/VARS--------------------------------#
 ULIST=( 
     'www.gsp.com/cgi-bin/man.cgi?topic=%s&section=%s' 
     'man.cx/%s(%s)' 
     'www.freebsd.org/cgi/man.cgi?query=%s&sektion=%s&format=ascii'
     'sarata.com/manpages/%s.%s.html' 
 )
-VIEW_PG='1'
+MODE='view'
+RDIR="$HOME/.config/mentat"
 URLG="${ULIST[ 0 ]}"
 PAGES=( {1..9} )
-RDIR="$HOME/.config/mentat"
 OUTDIR="${RDIR}/mentatpages"
 RECSDIR="${RDIR}/Recs/"
-#--------------INITILIZE------------------------------------#
+NOCACHE='0'
+VIEW_PG='1'
+#--------------INITILIZE_DIRECTORIES------------------------#
 if ! [[ -d "${RDIR}"    ]] ; then mkdir "${RDIR}"    ; fi
 if ! [[ -d "${OUTDIR}"  ]] ; then mkdir "${OUTDIR}"  ; fi
 if ! [[ -d "${RECSDIR}" ]] ; then mkdir "${RECSDIR}" ; fi
-if   command -v "lynx"  ; then 
-    function mlink_view()   { lynx  -cmd_script="${RECSDIR}/cmd_script_lynx.txt" "${1}" ; }
-    function mlink_dump()   { lynx  -dump -nonumbers "${1}" ; }
-elif command -v "links" ; then 
-    function mlink_dump()   { links -dump -html-numbered-links 0 -no-g  "${1}" ; }
-    function mlink_view()   { links "${1}" ; }
-elif command -v "curl"  ; then                          
-    function mlink_view()   { curl  --use-ascii "${1}" ; }
-    function mlink_dump()   { curl  "${1}" ; }
-else return '1'
+#--------------VIEW_AND_DUMP_FUNCTIONS----------------------#
+if   command -v "lynx"  &>/dev/null
+then function mlink_view()   { lynx  -cmd_script="${RECSDIR}/cmd_script_lynx.txt" "${1}" ; }
+     function mlink_dump()   { lynx  -dump -nonumbers "${1}" ; }
+elif command -v "links" &>/dev/null
+then function mlink_dump()   { links -dump -html-numbered-links 0 -no-g  "${1}" ; }
+     function mlink_view()   { links "${1}" ; }
+elif command -v "curl"  &>/dev/null
+then function mlink_view()   { curl  --use-ascii "${1}" ; }
+     function mlink_dump()   { curl  "${1}" ; }
+else echo "No web program found."
+     return '1'
 fi
 function mlink_nvim() {
-    com_inner="lynx -cmd_script='${RECSDIR}/cmd_script_lynx.txt' '${1}'"
-    com_full="$(printf 'vnew Web | call termopen(" %s ") | only' "${com_inner}")"
-    echo "${com_full}"
-    nvim -c "${com_full}"
+    nvim -c "$(printf 'vnew Web | call termopen(" %s ") | only'\
+                      "lynx -cmd_script='${RECSDIR}/cmd_script_lynx.txt' '${1}'")"
 }
-#--------------GET_FUNCTIONS--------------------------#
-function make_subname() {
+#--------------HELPER_GET-----------------------------#
+function get_subname() {
     grep -Pio '^([a-zA-Z]*://)?([ \t]*www.)?\K[^./]*' <<< "${1}"
 }
 function get_url() {
     tmpfile="$(mktemp)" ; echo "${tmpfile}"
     mlink_dump "${1}" > "${tmpfile}" 
-
     if   str_beg="$(grep -Pn --max-count=1 '^NAME[ \t]*$' "${tmpfile}" | grep -Po '^[0-9]+(?=[^0-9])')"
     then str_end="$(grep -Pn '^[A-Z]+[ \t]*$' "${tmpfile}" | tail -1 | grep -Po '^[0-9]+(?=[^0-9])')"
          sed -i -n "$((str_beg-1)),$((str_end+5))p" "${tmpfile}"
+    else
+        return "1"
     fi
-    return "$?"
 }
-function find_pages() {
+#--------------GET----------------------#
+function get_man() {
+    cmg_fn="${OUTDIR}/$(get_subname "${URLG}").${CNAME}"
+
     for i in "${PAGES[@]}" ; do
-        mdurl="$(printf "https://${1}" "${2}" "${i}")"
-        if ztop="$(get_url "${mdurl}")" ; then 
-            if command -z "txt2man"
-            then txt2man "${ztop}" > "${OUTDIR}/${3}.${i}"
-            else     cat "${ztop}" > "${OUTDIR}/${3}.${i}"
-        fi ; fi
-        if [[ -f "${ztop}" ]] ; then rm "${ztop}"; fi
+        if ! [[ "${NOCACHE}" -eq "1" ]] && ls -1 "${cmg_fn}.${i}" &>/dev/null
+        then echo "${cmg_fn}.${i}"$'\n\t''has already been downloaded, use --nocache to ignore and redownload.'
+        else
+            mdurl="$(printf "https://${URLG}" "${CNAME}" "${i}")"
+            if ztop="$(get_url "${mdurl}")" ; then 
+                if command -v "txt2man" &>/dev/null
+                then txt2man "${ztop}" > "${cmg_fn}.${i}"
+                else     cat "${ztop}" > "${cmg_fn}.${i}"
+            fi ; fi
+
+            if [[ -f "${ztop}" ]] ; then rm "${ztop}"; fi
+        fi
     done
 }
-function get_man() {
-    cmg_fn="$(make_subname "${URLG}").${CNAME}"
-    if [[ "${NOCACHE}" -eq "1" ]]  || ! ls -1 "${OUTDIR}/${cmg_fn}."* 2>/dev/null
-    then
-        find_pages "${URLG}" "${CNAME}" "${cmg_fn}"
-    fi
-
-    return 0
-}
-#--------------SMALL-ONE-JOB------------#
 function get_all() {
     while [[ "${i:=0}" -lt ${#URL[@]} ]] ; do
         get_man "${ULIST[ i++ ]}"
@@ -95,27 +89,22 @@ function handle_args() {
     ;; -*) echo "OPTION ${1} NOT FOUND"     ; return "1"
     ;; "") echo "COMMAND NAME NOT PROVIDED" ; return "1"
     ;;  *) CNAME="${*}"                     ; return "$?"
-    esac
-    shift 1; handle_args "${@}"
+    esac ; shift 1; handle_args "${@}"
 }
 #--------------MAIN---------------------#
 function main() {
+    if ! handle_args "${@}" ; then return "1" ; fi
 
-    if ! handle_args "${@}" ; then
-        return "1"
-    else
-        case "${MODE,,}" in 
-            get)    get_man "${URLG}"
-        ;;  all)    get_all
-        ;; view)    mlink_view "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
-        ;; dump)    mlink_dump "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
-        ;; nvim)    mlink_nvim "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
-        ;;          *)  echo "Error, mode is undefined"; return 1
-        esac
-    fi
+    case "${MODE,,}" in 
+        get)    get_man "${URLG}"
+    ;;  all)    get_all
+    ;; view)    mlink_view "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
+    ;; dump)    mlink_dump "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
+    ;; nvim)    mlink_nvim "$(printf "${URLG}" "${CNAME}" "${VIEW_PG}")"
+    ;;          *)  echo "Error, mode is undefined"; return 1
+    esac
+}
 
-} ; main "${@}"
-####------------------------END-SUBSHELL-####
+main "${@}"
 ) ####------------------------END-SUBSHELL-####
-####------------------------END-SUBSHELL-####
 
