@@ -2,6 +2,7 @@
 
 ( ####------------------------BEGIN-SUBSHELL-####
 #--------------SETTINGS/VARS--------------------------------#
+# https://www.xfree86.org/current/xmessage.1.html
 ULIST=( 
     'www.gsp.com/cgi-bin/man.cgi?topic=%s&section=%s' 
     'man.cx/%s(%s)' 
